@@ -34,25 +34,33 @@ def upload_data(df):
     cursor = conn.cursor()
 
     for _, row in df.iterrows():
-        timestamp = row["Datetime"]
-        if isinstance(timestamp, pd.Timestamp):
-            timestamp = timestamp.to_pydatetime()
+        try:
+            timestamp = row["Datetime"]
+            if hasattr(timestamp, "to_pydatetime"):
+                timestamp = timestamp.to_pydatetime()
 
-        cursor.execute("""
-            INSERT INTO stock_data (
-                timestamp, open, high, low, close, adj_close, volume, ticker
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (timestamp, ticker) DO NOTHING
-        """, (
-            timestamp,
-            float(row["Open"]),
-            float(row["High"]),
-            float(row["Low"]),
-            float(row["Close"]),
-            float(row["Adj Close"]) if "Adj Close" in row else float(row["Close"]),
-            int(row["Volume"]),
-            str(row["ticker"])
-        ))
+            open_ = float(row["Open"]) if pd.notna(row["Open"]) else None
+            high = float(row["High"]) if pd.notna(row["High"]) else None
+            low = float(row["Low"]) if pd.notna(row["Low"]) else None
+            close = float(row["Close"]) if pd.notna(row["Close"]) else None
+            adj_close = float(row["Adj Close"]) if pd.notna(row["Adj Close"]) else close
+            volume = int(row["Volume"]) if pd.notna(row["Volume"]) else 0
+            ticker = str(row["ticker"])
+
+            if None in (open_, high, low, close):
+                continue  # 주요 필드 결측치 있으면 skip
+
+            cursor.execute("""
+                INSERT INTO stock_data (
+                    timestamp, open, high, low, close, adj_close, volume, ticker
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (timestamp, ticker) DO NOTHING
+            """, (timestamp, open_, high, low, close, adj_close, volume, ticker))
+
+        except Exception as e:
+            print("Error inserting row:", e)
+            continue
+
 
     conn.commit()
     cursor.close()
