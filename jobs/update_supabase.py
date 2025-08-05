@@ -23,7 +23,7 @@ def fetch_data(ticker):
     df["ticker"] = ticker
     return df
 
-def upload_data(df, table_name="stock_data"):
+def upload_data(df):
     conn = psycopg2.connect(
         dbname=DB_NAME,
         user=DB_USER,
@@ -34,15 +34,20 @@ def upload_data(df, table_name="stock_data"):
     cursor = conn.cursor()
 
     for _, row in df.iterrows():
-        cursor.execute(f"""
-            INSERT INTO {table_name} (
+        cursor.execute("""
+            INSERT INTO stock_data (
                 timestamp, open, high, low, close, adj_close, volume, ticker
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (timestamp, ticker) DO NOTHING
         """, (
-            row["Datetime"], row["Open"], row["High"], row["Low"], row["Close"],
-            row.get("Adj Close", row["Close"]), row["Volume"], row["ticker"]
+            row["Datetime"].to_pydatetime(),  # <- datetime 변환 중요
+            float(row["Open"]),
+            float(row["High"]),
+            float(row["Low"]),
+            float(row["Close"]),
+            float(row["Adj Close"]) if "Adj Close" in row else float(row["Close"]),
+            int(row["Volume"]),
+            str(row["ticker"])
         ))
 
     conn.commit()
