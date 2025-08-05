@@ -1,16 +1,13 @@
-# jobs/update_supabase.py
-
 import yfinance as yf
 import pandas as pd
 import psycopg2
 import os
-from datetime import datetime
 
-TICKERS = ["AAPL", "MSFT", "TSLA", "GOOGL", "AMZN"]
+TICKERS = ["AAPL", "MSFT", "TSLA"]
 PERIOD = "5d"
 INTERVAL = "1h"
 
-# Supabase 연결 정보 (GitHub Actions에서 환경변수로 전달됨)
+# DB info from GitHub Secrets
 DB_NAME = os.environ["SUPABASE_DB"]
 DB_USER = os.environ["SUPABASE_USER"]
 DB_PASSWORD = os.environ["SUPABASE_PASSWORD"]
@@ -32,48 +29,23 @@ def upload_data(df):
         port=DB_PORT
     )
     cursor = conn.cursor()
-
     for _, row in df.iterrows():
-        try:
-            timestamp = row["Datetime"]
-            if hasattr(timestamp, "to_pydatetime"):
-                timestamp = timestamp.to_pydatetime()
-
-            open_ = float(row["Open"]) if pd.notna(row["Open"]) else None
-            high = float(row["High"]) if pd.notna(row["High"]) else None
-            low = float(row["Low"]) if pd.notna(row["Low"]) else None
-            close = float(row["Close"]) if pd.notna(row["Close"]) else None
-            adj_close = float(row["Adj Close"]) if pd.notna(row["Adj Close"]) else close
-            volume = int(row["Volume"]) if pd.notna(row["Volume"]) else 0
-            ticker = str(row["ticker"])
-
-            if None in (open_, high, low, close):
-                continue  # 주요 필드 결측치 있으면 skip
-
-            cursor.execute("""
-                INSERT INTO stock_data (
-                    timestamp, open, high, low, close, adj_close, volume, ticker
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (timestamp, ticker) DO NOTHING
-            """, (timestamp, open_, high, low, close, adj_close, volume, ticker))
-
-        except Exception as e:
-            print("Error inserting row:", e)
-            continue
-
-
+        cursor.execute("""
+            INSERT INTO stock_data (
+                timestamp, open, high, low, close, adj_close, volume, ticker
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (timestamp, ticker) DO NOTHING
+        """, (
+            row["Datetime"], row["Open"], row["High"], row["Low"], row["Close"],
+            row.get("Adj Close", row["Close"]), row["Volume"], row["ticker"]
+        ))
     conn.commit()
     cursor.close()
     conn.close()
 
 def main():
-    all_data = []
-    for ticker in TICKERS:
-        df = fetch_data(ticker)
-        all_data.append(df)
-
-    combined_df = pd.concat(all_data, ignore_index=True)
-    upload_data(combined_df)
+    all_data = pd.concat([fetch_data(ticker) for ticker in TICKERS], ignore_index=True)
+    upload_data(all_data)
 
 if __name__ == "__main__":
     main()
