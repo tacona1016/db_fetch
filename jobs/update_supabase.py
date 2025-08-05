@@ -34,13 +34,17 @@ def upload_data(df):
     cursor = conn.cursor()
 
     for _, row in df.iterrows():
+        timestamp = row["Datetime"]
+        if isinstance(timestamp, pd.Timestamp):
+            timestamp = timestamp.to_pydatetime()
+
         cursor.execute("""
             INSERT INTO stock_data (
                 timestamp, open, high, low, close, adj_close, volume, ticker
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (timestamp, ticker) DO NOTHING
         """, (
-            row["Datetime"].to_pydatetime(),  # <- datetime 변환 중요
+            timestamp,
             float(row["Open"]),
             float(row["High"]),
             float(row["Low"]),
