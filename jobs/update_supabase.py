@@ -22,7 +22,7 @@ pw   = os.environ["SUPABASE_PASSWORD"]
 url = f"postgresql+psycopg2://{user}:{pw}@{host}:{port}/{db}?sslmode=require"
 engine = create_engine(url, connect_args={"sslmode":"require"}, pool_pre_ping=True)
 
-tickers = ["AAPL", "MSFT", "TSLA"]
+tickers = ["NQ=F", "^GSPC", "KRWUSD=X", "^VIX", "TLT", "^TNX", "^TYX", "GC=F", "SI=F", "^KS11", "BTC-USD"]
 period = "10y"
 interval = "1d"
 
