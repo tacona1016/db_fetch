@@ -3,71 +3,34 @@ import psycopg2
 import yfinance as yf
 import os
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+import warnings
 
+# 모든 경고 무시
+warnings.filterwarnings("ignore")
 load_dotenv()
 
-TICKERS = ["AAPL", "MSFT", "TSLA"]
-PERIOD = "5d"
-INTERVAL = "1h"
+import os
+from sqlalchemy import create_engine, text
 
-DB_NAME = os.environ["SUPABASE_DB"]
-DB_USER = os.environ["SUPABASE_USER"]
-DB_PASSWORD = os.environ["SUPABASE_PASSWORD"]
-DB_HOST = os.environ["SUPABASE_HOST"]
-DB_PORT = os.environ.get("SUPABASE_PORT", 5432)
+host = os.environ["SUPABASE_HOST"]
+port = os.environ.get("SUPABASE_PORT", 5432)
+db   = os.environ["SUPABASE_DB"]
+user = os.environ["SUPABASE_USER"]
+pw   = os.environ["SUPABASE_PASSWORD"]
 
-def fetch_data(ticker):
-    df = yf.download(ticker, period=PERIOD, interval=INTERVAL)
-    df.reset_index(inplace=True)
-    df["ticker"] = ticker
-    return df
+url = f"postgresql+psycopg2://{user}:{pw}@{host}:{port}/{db}?sslmode=require"
+engine = create_engine(url, connect_args={"sslmode":"require"}, pool_pre_ping=True)
 
-def upload_data(df):
-    conn = psycopg2.connect(
-        dbname=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT
-    )
-    cursor = conn.cursor()
+tickers = ["AAPL", "MSFT", "TSLA"]
+period = "10y"
+interval = "1d"
 
-    for _, row in df.iterrows():
-        try:
-            # 강제 변환 (Series 타입 방지)
-            timestamp = row["Datetime"]
-            if hasattr(timestamp, "to_pydatetime"):
-                timestamp = timestamp.to_pydatetime()
+df = yf.download(tickers, period=period, interval=interval, group_by="ticker", auto_adjust=True)
+df = df.stack(level=0)
+df = df.reset_index()
+df.columns = df.columns.str.lower()
 
-            open_ = float(row["Open"])
-            high = float(row["High"])
-            low = float(row["Low"])
-            close = float(row["Close"])
-            adj_close = float(row["Adj Close"]) if "Adj Close" in row else close
-            volume = int(row["Volume"])
-            ticker = str(row["ticker"])
-
-            cursor.execute("""
-                INSERT INTO stock_data (
-                    timestamp, open, high, low, close, adj_close, volume, ticker
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (timestamp, ticker) DO NOTHING
-            """, (
-                timestamp, open_, high, low, close, adj_close, volume, ticker
-            ))
-
-        except Exception as e:
-            print("❌ Error inserting row:", e)
-            print(row)
-            continue
-
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-def main():
-    all_data = pd.concat([fetch_data(t) for t in TICKERS], ignore_index=True)
-    upload_data(all_data)
-
-if __name__ == "__main__":
-    main()
+with engine.begin() as conn:
+    df.to_sql("stock_data", con=conn, if_exists="replace", index=False)
+    print('DB saved')
